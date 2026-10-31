@@ -1,0 +1,3 @@
+# Vanilla OPD baseline for the Semi-OPD repro: same pair / protocol / prompt order as semi100_semi, online rollouts.
+extends: [pair.yaml, ../../methods/vanilla_opd.yaml]
+name: semi100_opd

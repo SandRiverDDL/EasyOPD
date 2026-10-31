@@ -1,0 +1,8 @@
+# vanilla_opd on the full train set, 80 steps, val every 10 (rerun of abl80v10_full with the EOS fix).
+# Same config as the run launched by hand as 1030_0318_abl80v10eos_full (scripts/run_ablation.sh full).
+extends: [../../protocols/b32n1r2k.yaml, ../../methods/vanilla_opd.yaml]
+name: abl80v10eos_full
+env:
+  TOTAL_STEPS: 80
+  SAVE_FREQ: 80
+  TEST_FREQ: 10

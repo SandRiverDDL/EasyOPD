@@ -1,0 +1,12 @@
+# Smoke for opd100lr1_vanilla: 2 steps, no val, one full ckpt at step 2 (same proven path as smoke_sched2;
+# delete its ckpt / hf afterwards).
+# Question: does 32x8 x 8192 OPD with the teacher resident fit on 4 GPUs (peak perf/max_memory_reserved_gb < ~78)?
+extends: ../1030_rl/opd.yaml
+name: smoke_opd_n8r8k
+env:
+  TOTAL_STEPS: 2
+  SAVE_FREQ: 2
+  SAVE_WEIGHTS_FREQ: -1
+  TEST_FREQ: -1
+  VAL_BEFORE_TRAIN: false
+  DUMP_FREQ: 0

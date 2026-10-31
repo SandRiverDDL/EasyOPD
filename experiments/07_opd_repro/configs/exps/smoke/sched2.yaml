@@ -1,0 +1,9 @@
+# Scheduler smoke test: 2 steps, no validation, one ckpt at step 2 (exercises launch -> train -> merge -> done).
+extends: ../1030_eosfix/full.yaml
+name: smoke_sched2
+env:
+  TOTAL_STEPS: 2
+  SAVE_FREQ: 2
+  TEST_FREQ: -1
+  VAL_BEFORE_TRAIN: false
+  DUMP_FREQ: 0

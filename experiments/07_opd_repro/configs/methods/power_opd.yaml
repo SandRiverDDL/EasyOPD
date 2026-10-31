@@ -1,0 +1,10 @@
+# power_opd: PowerOPD, power-transformed teacher/student log-ratio reward.
+# alpha 5.0 is the official script value (paper text says 500).
+# terminal_eos_ids: 151643 = <|endoftext|> (what the Base student actually emits), 151645 = <|im_end|>;
+# masked as the official TERMINAL_STOP_TARGET=mask does.
+method: power_opd
+args:
+  +actor_rollout_ref.actor.opd.alpha: 5.0
+  +actor_rollout_ref.actor.opd.terminal_eos_ids: [151643, 151645]
+  # Official terminal handling is the mask above; drop a protocol's cross_eos so the two are not stacked.
+  +actor_rollout_ref.actor.opd.terminal_stop: null

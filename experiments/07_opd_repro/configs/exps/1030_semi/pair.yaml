@@ -1,0 +1,21 @@
+# Pair layer for the Semi-OPD repro (arXiv 2610.11291 Table 1 row: Qwen3-1.7B non-thinking <- Qwen3-4B-Instruct-2507,
+# paper avg@32 over AIME24/25/26+HMMT26: student 9.0, OPD 26.2, Semi-OPD 39.8). No name: only extended.
+# "Our OPD config first" (user, 10-30): protocol b32n1r2k (32 prompts x 1, response 2048, lr 1e-6, fp32 master)
+# with only the models swapped. Paper config (128 x 1, response 4096, wd 0.01) is the fallback if this
+# does not reproduce Semi-OPD > OPD.
+# Changes vs the protocol:
+#   - STUDENT/TEACHER: the paper pair (chat student, so the Base-imend EOS fix is not needed);
+#   - terminal_stop: null -- cross_eos exists only for the Base student's <|endoftext|> (docs/pitfalls.md);
+#   - diag_tokenizer: the actual student.
+extends: ../../protocols/b32n1r2k.yaml
+env:
+  STUDENT_MODEL: /mnt/NLU_disk17/chenhaoyu02/models/Qwen3-1.7B
+  TEACHER_MODEL: /mnt/NLU_disk17/chenhaoyu02/models/Qwen3-4B-Instruct-2507
+  TOTAL_STEPS: 100
+  TEST_FREQ: 20
+  SAVE_WEIGHTS_FREQ: 20
+  SAVE_FREQ: 100
+  MAX_CKPT_KEEP: 1
+args:
+  +actor_rollout_ref.actor.opd.terminal_stop: null
+  +actor_rollout_ref.actor.opd.diag_tokenizer: /mnt/NLU_disk17/chenhaoyu02/models/Qwen3-1.7B

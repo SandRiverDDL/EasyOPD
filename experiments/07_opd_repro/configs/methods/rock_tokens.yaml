@@ -1,0 +1,6 @@
+# rock_tokens: Rock-Freeze, reweight the OPD loss on a static list of "rock" token ids.
+method: rock_tokens
+args:
+  +actor_rollout_ref.actor.opd.token_list: rock
+  +actor_rollout_ref.actor.opd.freeze_weight: 0.0
+  +actor_rollout_ref.actor.opd.normalize: sum_w

@@ -1,0 +1,11 @@
+# topd: TOP-D, proximal teacher reward + future-mean returns + group z-score + mini-batch reuse.
+# Component D: several PPO mini-batches per rollout (official single-node 128/32 ratio -> 64/16),
+# aggregated seq-mean-token-mean as in the official scripts.
+method: topd
+env:
+  PPO_MINI_BATCH_SIZE: 16
+  LOSS_AGG_MODE: seq-mean-token-mean
+args:
+  +actor_rollout_ref.actor.opd.alpha: 0.1
+  +actor_rollout_ref.actor.opd.variant: full
+  +actor_rollout_ref.actor.opd.group_norm: true

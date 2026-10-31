@@ -1,0 +1,6 @@
+# distillm2: DistiLLM-2 (on-policy part), skew reverse KL on teacher top-k.
+method: distillm2
+args:
+  +actor_rollout_ref.actor.opd.topk: 32
+  +actor_rollout_ref.actor.opd.skew_alpha: 0.1
+  +actor_rollout_ref.actor.opd.kl_coef: 1.0

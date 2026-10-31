@@ -1,0 +1,8 @@
+# revisit_opd: Revisiting OPD, renormalised teacher top-K reverse KL + top-p rollout.
+# top-p 0.9 rollout is part of the method (paper Sec 3.2, Table A1).
+method: revisit_opd
+env:
+  ROLLOUT_TOP_P: 0.9
+args:
+  +actor_rollout_ref.actor.opd.topk: 32
+  +actor_rollout_ref.actor.opd.kl_coef: 1.0

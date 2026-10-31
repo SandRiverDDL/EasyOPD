@@ -1,0 +1,3 @@
+# vanilla_opd: sampled-token reverse-KL OPD baseline (A = log q - log p_old, PPO-clip).
+# No method-intrinsic knobs; everything else comes from common.sh.
+method: vanilla_opd

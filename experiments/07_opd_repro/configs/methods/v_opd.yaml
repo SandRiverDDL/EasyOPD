@@ -1,0 +1,5 @@
+# v_opd: vOPD, top-k exact reverse KL with a control-variate baseline.
+method: v_opd
+args:
+  +actor_rollout_ref.actor.opd.kl_top_k: 20
+  +actor_rollout_ref.actor.opd.use_baseline: true

@@ -1,0 +1,9 @@
+# grpo: plain GRPO baseline (verifier reward only, no teacher). New file, same common.sh pipeline as the OPD
+# methods so data / student init / val / eval stay identical; only the learning signal differs.
+# OPD_METHOD='' -> common.sh drops actor.opd.method, so no ref worker is built and no OPD hook runs.
+# Everything else is the common.sh default: adv_estimator=grpo (std-normalised), clip 0.2/0.2, token-mean,
+# no KL loss, no entropy bonus, reward = scripts/reward_fn.py (\boxed{} + math_verify).
+method: grpo
+env:
+  OPD_METHOD: ""
+  DUMP_FREQ: 0   # token dump lives in the OPD stage; nothing to dump without a teacher

@@ -1,0 +1,6 @@
+# Semi-OPD, our protocol: 100 steps x 32 fixed offline responses (Qwen3-1.7B non-thinking, T=1.0, generated at 4096,
+# cut to 2048 here). Compare with semi100_opd (same pair, same prompt order) at steps 20..100.
+extends: [pair.yaml, ../../methods/semi_opd.yaml]
+name: semi100_semi
+env:
+  TRAIN_PARQUET: /mnt/NLU_disk17/chenhaoyu02/data/opd_repro/semi_opd/train_en__Qwen3-1.7B_nothink_t1_r4096.parquet

@@ -1,0 +1,9 @@
+# semi_opd: Semi-OPD (arXiv 2610.11291) -- vanilla OPD loss on fixed offline rollouts of the initial student.
+# The train parquet carries `offline_response_ids` (scripts/gen_offline_rollouts.py); ray_trainer replays it
+# ([EasyOPD:semi_opd]) instead of generating, so rollout.n must be 1 (one stored response per prompt).
+# The parquet is train_en.parquet with extra columns and the same row order, so with the same SEED the
+# dataloader yields the same prompts per step as a vanilla_opd run on train_en.parquet.
+# Pick the parquet whose generator = this run's STUDENT_MODEL (set TRAIN_PARQUET in the exp yaml).
+method: semi_opd
+env:
+  ROLLOUT_N: 1

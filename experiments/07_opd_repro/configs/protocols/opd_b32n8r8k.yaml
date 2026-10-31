@@ -1,0 +1,8 @@
+# Protocol opd_b32n8r8k (new, 10-30): OPD matched to rl_b32n8r8k per step -- 32 prompts x n=8, response 8192,
+# same train set / lr / fp32 master weights -- so OPD and GRPO/DAPO see the same prompts, rollouts and tokens
+# per step and differ only in the learning signal (teacher logp vs verifier reward). One GPU half (4 GPUs);
+# GPU count does not change the algorithm, only speed. Diagnostics / cross_eos as in b32n1r2k.
+extends: b32n1r2k.yaml
+env:
+  ROLLOUT_N: 8
+  MAX_RESPONSE_LEN: 8192

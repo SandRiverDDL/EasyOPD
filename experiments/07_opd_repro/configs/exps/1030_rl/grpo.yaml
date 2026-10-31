@@ -1,0 +1,13 @@
+# GRPO baseline from the Base student on DAPO-Math (train_en), 200 steps, val + weights ckpt every 20.
+# Question: how far does verifier-only RL get on this data/student in 200 steps, vs vanilla OPD (abl80v10eos_full)?
+# Weights-only ckpt every 20 (merged to hf/ for offline eval); one full ckpt (resumable) every 100, newest kept.
+# 10-30: first launch as rl200s20_grpo used lr 2e-6 (stopped at step 28); relaunched as rl200lr1_grpo with lr 1e-6
+# and the rl/group_* metrics.
+extends: [../../protocols/rl_b32n8r8k.yaml, ../../methods/grpo.yaml]
+name: rl200lr1_grpo
+env:
+  TOTAL_STEPS: 200
+  TEST_FREQ: 20
+  SAVE_WEIGHTS_FREQ: 20
+  SAVE_FREQ: 100
+  MAX_CKPT_KEEP: 1

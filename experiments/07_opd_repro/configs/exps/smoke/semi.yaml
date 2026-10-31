@@ -1,0 +1,12 @@
+# Smoke for semi100_semi: 2 steps, no val, no ckpt. Delete its run dir afterwards.
+# Question: does the replay path run end to end (semi_opd/replayed=1 in the step line, gen timing ~0,
+# response_length/mean == mean of the stored ids cut to 2048) with the chat student / 2507 teacher?
+extends: ../1030_semi/semi.yaml
+name: smoke_semi
+env:
+  TOTAL_STEPS: 2
+  SAVE_FREQ: -1
+  SAVE_WEIGHTS_FREQ: -1
+  TEST_FREQ: -1
+  VAL_BEFORE_TRAIN: false
+  DUMP_FREQ: 0

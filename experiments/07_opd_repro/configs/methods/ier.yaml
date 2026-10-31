@@ -1,0 +1,9 @@
+# ier: IER, keep the top 1% tokens of the batch by information-to-error ratio.
+# Official slime config: eps_clip 0.2 / eps_clip_high 0.28; seq-mean-token-mean is hard-coded in the method.
+method: ier
+env:
+  CLIP_HIGH: 0.28
+args:
+  +actor_rollout_ref.actor.opd.budget_ratio: 0.01
+  +actor_rollout_ref.actor.opd.selector: ier
+  +actor_rollout_ref.actor.opd.topk: 16

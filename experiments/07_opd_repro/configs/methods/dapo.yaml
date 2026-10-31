@@ -1,0 +1,22 @@
+# dapo: GRPO + the DAPO tricks this verl tree supports in-core (new file; knobs follow
+# experiments/02_agentic_opd/methods/grpo/launch.sh and the verl DAPO recipe defaults):
+#   - clip-higher: clip_ratio_high 0.28 (low stays 0.2)
+#   - token-level loss: token-mean (already the common.sh default, same as grpo)
+#   - overlong reward shaping: reward_manager=dapo, linear penalty (0 -> -1) over the last `len` tokens;
+#     DAPO used 4096 of 20480 (20%); here 2048 of 8192 (25%), i.e. the penalty starts at 6144 tokens
+# NOT included: dynamic sampling. verl's in-tree algorithm.filter_groups (ray_trainer._apply_filter_groups)
+# only drops zero-variance groups and never re-generates to refill the batch (max_num_gen_batches is unused),
+# so it would shrink the batch instead of keeping it full. The official refill loop lives in recipe/dapo,
+# which is an uninitialised submodule here.
+extends: grpo.yaml
+method: dapo
+env:
+  CLIP_HIGH: 0.28
+args:
+  reward_model.reward_manager: dapo
+  +reward_model.reward_kwargs.overlong_buffer_cfg.enable: true
+  +reward_model.reward_kwargs.overlong_buffer_cfg.len: 2048
+  +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor: 1.0
+  +reward_model.reward_kwargs.overlong_buffer_cfg.log: true
+  # Must equal MAX_RESPONSE_LEN (the penalty starts at max_resp_len - len). Set per protocol/exp.
+  +reward_model.reward_kwargs.max_resp_len: 8192

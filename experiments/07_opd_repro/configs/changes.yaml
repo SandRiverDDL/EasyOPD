@@ -1,0 +1,39 @@
+# 影响 run 可比性的配置变更，只追加，不改旧条目。
+#
+# scripts/run_table.py 对每个 run 逐条检查：field 的取值不在 expect 里，就在 RUNS.md 标「过时(<id>)」。
+#   scope: train  训练本身不同，结果不能和当前 run 放一张表比
+#   scope: val    只影响训练时验证曲线；训练可比，离线评测可以重测
+# field 可选值见 run_table.py 的 run_fields()：lr / dtype / eos_ok / val。
+# 新增一条变更时：在这里追加，并在 commit / 文档里说明从哪个 run 起生效。
+
+- id: val-math500
+  date: 2026-10-29
+  scope: val
+  change: 训练时验证集 aime24 → math500_dev200（1029_2215 起）
+  field: val
+  expect: [math500_dev200.parquet, math500_l45_dev200.parquet]
+
+- id: eos-fix
+  date: 2026-10-30
+  scope: train
+  change: >-
+    Base 学生以 <|endoftext|>(151643) 结束，teacher 给约 −20 logp。修复：协议加
+    terminal_stop=cross_eos；power/dial 用官方结尾 mask，terminal_eos_ids 加入 151643。
+    非 Base 学生和 RL（不用 teacher）不受影响。
+  field: eos_ok
+  expect: [true]
+  doc: runs/train/07_opd_repro/1029_2323_abl80v10_README.md
+
+- id: fp32-master
+  date: 2026-10-30
+  scope: train
+  change: actor 主权重 bf16 → fp32（common.sh ACTOR_MODEL_DTYPE），见 easyopd/docs/pitfalls.md
+  field: dtype
+  expect: [fp32]
+
+- id: lr-1e-6
+  date: 2026-10-30
+  scope: train
+  change: common.sh 默认 ACTOR_LR 2e-6 → 1e-6
+  field: lr
+  expect: [1.0e-06]

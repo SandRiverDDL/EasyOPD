@@ -1,0 +1,7 @@
+# aopd: OPD on agreeing tokens + teacher top-k forward KL where the teacher disagrees.
+method: aopd
+args:
+  +actor_rollout_ref.actor.opd.topk: 32
+  +actor_rollout_ref.actor.opd.threshold: 0.0
+  +actor_rollout_ref.actor.opd.opd_weight: 1.0
+  +actor_rollout_ref.actor.opd.fkl_weight: 1.0

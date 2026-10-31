@@ -1,0 +1,5 @@
+# Training response length 2k (MAX_RESPONSE_LEN=2048); everything else from base.yaml.
+extends: base.yaml
+name: len200_r2k
+env:
+  MAX_RESPONSE_LEN: 2048

@@ -1,0 +1,11 @@
+# vanilla OPD under the RL-matched protocol (32x8, 8192, lr 1e-6, fp32 master), 100 steps on 4 GPUs.
+# Question: vanilla OPD vs rl200lr1_{grpo,dapo} at equal rollouts/tokens per step (compare at steps 20..100).
+# Same ckpt/val cadence as the RL runs: val + weights-only ckpt every 20, one full ckpt at 100.
+extends: [../../protocols/opd_b32n8r8k.yaml, ../../methods/vanilla_opd.yaml]
+name: opd100lr1_vanilla
+env:
+  TOTAL_STEPS: 100
+  TEST_FREQ: 20
+  SAVE_WEIGHTS_FREQ: 20
+  SAVE_FREQ: 100
+  MAX_CKPT_KEEP: 1

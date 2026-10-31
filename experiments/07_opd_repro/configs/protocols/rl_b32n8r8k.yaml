@@ -1,0 +1,10 @@
+# Protocol rl_b32n8r8k (new, 10-30): RL baselines on a whole node (8 GPUs), 32 prompts x n=8 per step,
+# response 8192 (= VAL_MAX_TOKENS = offline eval max_tokens), train set train_en (DAPO-Math, \boxed{} prompt),
+# 1 on-policy update per step (mini batch = batch), lr from common.sh (1e-6 since 10-30; the first rl200s20 runs used 2e-6) and fp32 master weights,
+# no in-launcher eval (offline eval later). Same prompts/step as b32n1r2k; 8x the rollouts.
+gpus: 8
+env:
+  TRAIN_BATCH_SIZE: 32
+  ROLLOUT_N: 8
+  MAX_RESPONSE_LEN: 8192
+  EVAL_STEPS: none

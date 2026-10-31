@@ -1,0 +1,52 @@
+# 手写备注，scripts/run_table.py 合并进 RUNS.md。规则判断不了的东西才写这里。
+#
+# batches: 批次 → question（这批要回答什么，一句话）、doc（结论文档，相对仓库根）、readme（旧的批次 README，相对 runs 根）
+# runs:    tag 的 fnmatch 模式 → batch（只给没有 resolved.yaml 的旧 run 补归属）、note（一句话）
+#          多个模式都匹配时按文件顺序叠加，后面的覆盖前面的同名字段。
+# 新 run 的批次由 configs/exps/<批次>/ 自动得出，一般只需要在 batches 里补 question 和 doc。
+
+batches:
+  1029_1634_b32n1r2k:
+    question: 第一轮 6 个方法首次尝试（各自中途停掉，被 1029_1648 取代）
+    readme: 1029_1634_b32n1r2k_README.md
+  1029_1648_b32n1r2k_80s20:
+    question: 6 个 OPD 方法在同一协议下 80 步的对照
+    doc: easyopd/docs/experiments/2026-10-29-six-methods-80s.md
+    readme: 1029_1648_b32n1r2k_80s20_README.md
+  1029_2323_abl80v10:
+    question: OPD 的数据和信号来源消融（受 EOS bug 影响）
+    readme: 1029_2323_abl80v10_README.md
+  1030_eosfix:
+    question: EOS 修复后重跑 vanilla 消融和 power / dial 200 步
+  1030_rl:
+    question: 同预算下 RL（GRPO / DAPO）和 vanilla OPD 比
+    doc: easyopd/docs/experiments/2026-10-30-rl-vs-opd.md
+  1030_semi:
+    question: Semi-OPD 复现：离线 π₀ 轨迹 vs on-policy OPD
+    doc: easyopd/docs/experiments/2026-10-30-semi-vs-opd.md
+    readme: 1030_semi100_README.md
+  1031_semifew:
+    question: Semi-OPD 只用 N 条离线回答（N=16/4/1）还剩多少效果
+    doc: easyopd/docs/experiments/2026-10-30-semi-vs-opd.md
+  1031_len:
+    question: vanilla OPD 训练 response 长度 1k/2k/4k/8k 对最终效果和代价的影响（同步数、单 seed）
+    doc: easyopd/docs/experiments/2026-10-31-response-length.md
+  smoke:
+    question: 冒烟测试，可删
+
+runs:
+  "*_smoke_*":
+    batch: smoke
+  "1029_2323_abl80v10_*":
+    batch: 1029_2323_abl80v10
+  "1029_2323_abl80v10_template":
+    note: 停在 74 步
+  "1030_0318_abl80v10eos_*":
+    batch: 1030_eosfix
+  "1030_0318_200s25eos_*":
+    batch: 1030_eosfix
+    note: 每 25 步验证和存 ckpt
+  "1030_06*_rl200s20_*":
+    note: lr 2e-6 时起的 RL，手动停在 28 / 32 步，被 rl200lr1 取代
+  "1030_0745_opd100lr1_vanilla":
+    note: 原定 100 步，launch_resume200.sh 续到 200；fork_probe 等探针用它的 step 200

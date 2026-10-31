@@ -1,0 +1,3 @@
+# DAPO-style GRPO (clip-higher + overlong shaping, no dynamic sampling; see methods/dapo.yaml), otherwise = grpo.yaml.
+extends: [grpo.yaml, ../../methods/dapo.yaml]
+name: rl200lr1_dapo

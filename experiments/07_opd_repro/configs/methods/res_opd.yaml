@@ -1,0 +1,9 @@
+# res_opd: ResOPD, teacher head-exact + tail control variate + sampled residual (direct supervision).
+# Unbiased only with one on-policy update per rollout (PPO_EPOCHS=1, mini batch = batch, which is
+# common.sh's default PPO_MINI_BATCH_SIZE) and a full-support rollout (top_p 1.0).
+method: res_opd
+env:
+  PPO_EPOCHS: 1
+  ROLLOUT_TOP_P: 1.0
+args:
+  +actor_rollout_ref.actor.opd.topk: 4

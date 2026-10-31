@@ -1,0 +1,18 @@
+# Batch 1031_len: vanilla OPD, training response length 1k / 2k / 4k / 8k, everything else identical.
+# Question and criteria: easyopd/docs/experiments/2026-10-31-response-length.md. No name: only extended.
+# Base = 1030_rl/opd.yaml (opd100lr1_vanilla: protocol opd_b32n8r8k = 32 prompts x n=8, lr 1e-6, fp32 master,
+# cross_eos, Qwen3-1.7B-Base-imend <- Qwen3-4B, dev200 val at 8192 tokens). Changes vs that run:
+#   - TOTAL_STEPS 200 from the start (opd100lr1 was 100, then resumed to 200);
+#   - TEST_FREQ 10 (eval protocol, reference/eval-protocol.md); weights ckpt every 20 as before;
+#   - VAL_PARQUET = math500_l45_dev200 (eval protocol; built 10-31: MATH-500 L4+L5 262 -> sample(200, seed 0)),
+#     set here only, the common.sh default is still math500_dev200;
+#   - MAX_RESPONSE_LEN set per run (r1k/r2k/r4k/r8k.yaml). Val stays at VAL_MAX_TOKENS=8192 for all four,
+#     so every run is scored at the same decoding budget and only the training length differs.
+extends: [../../protocols/opd_b32n8r8k.yaml, ../../methods/vanilla_opd.yaml]
+env:
+  VAL_PARQUET: /mnt/NLU_disk17/chenhaoyu02/data/opd_repro/math500_l45_dev200.parquet
+  TOTAL_STEPS: 200
+  TEST_FREQ: 10
+  SAVE_WEIGHTS_FREQ: 20
+  SAVE_FREQ: 100
+  MAX_CKPT_KEEP: 1

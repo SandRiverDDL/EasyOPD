@@ -1,0 +1,18 @@
+# Protocol b32n1r2k (07_opd_repro, from 1029_1648_b32n1r2k_80s20): one GPU half (4 GPUs), batch 32 prompts
+# x n=1, response 2048, teacher resident on GPU, dev200 val, no in-launcher eval (offline eval later).
+# Same values scripts/run_ablation.sh passes; everything not listed keeps the common.sh default.
+gpus: 4
+env:
+  TRAIN_BATCH_SIZE: 32
+  ROLLOUT_N: 1
+  MAX_RESPONSE_LEN: 2048
+  REF_PARAM_OFFLOAD: false
+  EVAL_STEPS: none
+args:
+  # Diagnostics (easyopd/opd/analysis.py): teacher/student top-20 overlap, teacher entropy, token groups.
+  +actor_rollout_ref.actor.opd.diag_topk: 20
+  +actor_rollout_ref.actor.opd.diag_teacher_entropy: true
+  +actor_rollout_ref.actor.opd.diag_tokenizer: /mnt/NLU_disk17/chenhaoyu02/models/Qwen3-1.7B-Base-imend
+  # The Base student ends with <|endoftext|>; the teacher scores <|im_end|> there instead (docs/pitfalls.md).
+  # Methods with their own official terminal handling (power_opd, dial_opd) delete this key.
+  +actor_rollout_ref.actor.opd.terminal_stop: cross_eos

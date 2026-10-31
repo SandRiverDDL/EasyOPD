@@ -1,0 +1,11 @@
+# [EasyOPD:CKPT] smoke: 4 steps, weights every 2 (keep 1), full every 3 (keep all), no validation.
+# Expected: weights/global_step_2 saved then rotated away at step 4; global_step_3 full (optim_* present,
+# latest_checkpointed_iteration.txt = 3); weights/global_step_4 (model_* only, no full ckpt at the last step);
+# merge -> hf/global_step_3 + hf/global_step_4. Delete the ckpts afterwards (test run).
+extends: sched2.yaml
+name: smoke_ckpt4
+env:
+  TOTAL_STEPS: 4
+  SAVE_FREQ: 3
+  SAVE_WEIGHTS_FREQ: 2
+  MAX_WEIGHTS_KEEP: 1

@@ -1,0 +1,7 @@
+# eopd: entropy-gated OPD, + forward KL on teacher top-k where teacher entropy > threshold.
+# Paper protocol differs (B=128, mini 32, 1 sample/prompt, lr 3e-6); kept at the shared protocol for a fair comparison.
+method: eopd
+args:
+  +actor_rollout_ref.actor.opd.entropy_threshold: 0.8
+  +actor_rollout_ref.actor.opd.fkl_coef: 1.0
+  +actor_rollout_ref.actor.opd.topk: 16

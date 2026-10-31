@@ -1,0 +1,8 @@
+# Few-trajectory Semi-OPD: the whole train set is 4 fixed offline response(s) of Qwen3-1.7B(NT), each correct,
+# stop-finished, 1024-2048 tokens (so never cut at MAX_RESPONSE_LEN=2048), nested 1 c 4 c 16, replicated to
+# 3200 rows = 100 steps x 32 (scripts/make_ablation_data.py --which semi). Everything else = 1030_semi/semi.yaml.
+# Question: how much of semi100_semi's gain / loss survives with only 4 trajectory(ies)?
+extends: ../1030_semi/semi.yaml
+name: semifew_n4
+env:
+  TRAIN_PARQUET: /mnt/NLU_disk17/chenhaoyu02/data/opd_repro/semi_opd/train_semi4_len1024-2048.parquet

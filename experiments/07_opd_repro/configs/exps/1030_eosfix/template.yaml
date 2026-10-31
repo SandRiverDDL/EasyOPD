@@ -1,0 +1,6 @@
+# Prompt ablation: system prompt only, empty user turn (data/opd_repro/train_template_sys.parquet).
+# Same config as 1030_0318_abl80v10eos_template (scripts/run_ablation.sh template).
+extends: full.yaml
+name: abl80v10eos_template
+env:
+  TRAIN_PARQUET: /mnt/NLU_disk17/chenhaoyu02/data/opd_repro/train_template_sys.parquet

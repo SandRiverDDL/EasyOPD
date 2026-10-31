@@ -1,0 +1,6 @@
+# fp32 master weights smoke: same as sched2 (bf16 baseline, 1030_0400_smoke_sched2) except actor dtype.
+# Question: does fp32 master/m/v fit with ROLLOUT_GPU_MEM_UTIL=0.75? Compare peak memory vs sched2.
+extends: sched2.yaml
+name: smoke_fp32
+env:
+  ACTOR_MODEL_DTYPE: fp32

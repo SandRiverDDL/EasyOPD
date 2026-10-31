@@ -1,0 +1,7 @@
+# DIAL-OPD, 200 steps, val + ckpt every 25. Same config as 1030_0318_200s25eos_dial.
+extends: [../../protocols/b32n1r2k.yaml, ../../methods/dial_opd.yaml]
+name: 200s25eos_dial
+env:
+  TOTAL_STEPS: 200
+  SAVE_FREQ: 25
+  TEST_FREQ: 25

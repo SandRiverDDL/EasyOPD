@@ -1,0 +1,14 @@
+# dial_opd: DIAL-OPD, keep the top 20% tokens by teacher-student disagreement, REINFORCE.
+# Official is plain REINFORCE: one on-policy update per rollout (PPO_EPOCHS=1 and mini batch = batch,
+# which is common.sh's default PPO_MINI_BATCH_SIZE). 151643 = <|endoftext|> (what the Base student
+# actually emits), 151645 = <|im_end|>; both are excluded from V_i.
+method: dial_opd
+env:
+  PPO_EPOCHS: 1
+args:
+  +actor_rollout_ref.actor.opd.keep_ratio: 0.2
+  +actor_rollout_ref.actor.opd.score_beta: 1.0
+  +actor_rollout_ref.actor.opd.selector: dial
+  +actor_rollout_ref.actor.opd.terminal_eos_ids: [151643, 151645]
+  # Official terminal handling is the exclusion above; drop a protocol's cross_eos so the two are not stacked.
+  +actor_rollout_ref.actor.opd.terminal_stop: null
