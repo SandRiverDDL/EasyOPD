@@ -36,6 +36,13 @@ export PYTHONPATH=/root/EasyOPD:$PYTHONPATH
 - 方法逻辑放 `easyopd/methods/<name>/`，不往 `verl/` 里塞。必须挂接的点才允许改 `verl/`，并用 `# [EasyOPD:NAME]` … `# [EasyOPD:NAME] End` 包住，同时登记到方法的 `verl_modified_files` 和 `easyopd/docs/verl-touchpoints.md`。
 - 改完跑 `scripts/test_all_methods.py` 做注册 / 配置 / hook 契约回归。
 
+### 提交（agent 自动 commit，不自动 push）
+
+- 一件事做完、相关检查通过（语法检查、冒烟、`test_all_methods.py` 等与改动相关的）就自己 commit，不用等用户说。一个主题一个 commit，不攒大包，也不把半成品或没验证的改动提交上去。
+- 只提交本次任务改的文件，按文件名 `git add`，不用 `git add -A`；用户在改的、来历不明的文件不碰，留给用户。
+- 不提交产物和大文件（ckpt、parquet、eval 结果 json、日志）和任何密钥；它们属于 `runs/` 或数据盘。
+- 身份用仓库级 config（Chy <290498984@qq.com>）。push、改写历史（amend / rebase / force push）、建 PR 仍要先问用户。
+
 ---
 
 ## 项目文档（外部记忆）
