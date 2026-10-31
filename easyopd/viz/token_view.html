@@ -1,0 +1,320 @@
+<!doctype html>
+<!-- EasyOPD token viewer page; served by easyopd/viz/token_view.py, data comes from its /api/* endpoints. -->
+<html lang="zh"><head><meta charset="utf-8"><title>EasyOPD token view</title>
+<style>
+body{margin:0;font:13px/1.45 -apple-system,"Segoe UI","PingFang SC",sans-serif;color:#222}
+#app{display:grid;grid-template-columns:var(--lw,430px) 6px 1fr 6px var(--rw,270px);height:100vh}
+.gut{cursor:col-resize;background:#eee} .gut:hover,.gut.drag{background:#93c5fd}
+#tt th:first-child,#tt td:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:inset -1px 0 0 #ddd}
+#tt th:first-child{z-index:2;background:#f3f3f3} #tt tr.sel td:first-child{background:#fde68a}
+.side{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #ddd;padding:6px}
+.scroll{flex:1;overflow:auto;min-height:0}
+#right{border-left:1px solid #ddd;border-right:0}
+#mid{display:flex;flex-direction:column;min-width:0}
+#bar{padding:6px 10px;border-bottom:1px solid #ddd;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+#text{flex:1;overflow:auto;padding:12px 16px;font:14px/1.9 Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+#info{height:130px;overflow:auto;border-top:1px solid #ddd;padding:6px 10px;font:12px/1.4 Menlo,Consolas,monospace;background:#fafafa;white-space:pre}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{padding:2px 4px;text-align:right;border-bottom:1px solid #eee;white-space:nowrap}
+th{cursor:pointer;background:#f3f3f3;position:sticky;top:0}
+th.on{background:#fde68a}
+tbody tr{cursor:pointer} tbody tr:hover{background:#f5f5f5} tr.sel,tr.sel:hover{background:#fde68a}
+#text span.u{border-radius:2px}
+#text.bd span.u{box-shadow:inset -1px 0 0 #bbb}
+#text span.hl{outline:2px solid #111}
+.leg{display:inline-block;width:110px;height:10px;vertical-align:middle;margin:0 4px;border:1px solid #ccc}
+.hint{color:#666;margin:2px 0 6px}
+#runSel{width:100%}
+#steps label{margin-right:6px;white-space:nowrap}
+#err{color:#b91c1c}
+.sw{padding:0 4px;border-radius:2px;border:1px solid #ccc}
+#qbar{padding:4px 10px;border-bottom:1px solid #eee;display:none;gap:12px;flex-wrap:wrap;align-items:center}
+</style></head><body>
+<div id="app">
+<div class="side">
+  <div><select id="runSel"></select></div>
+  <div id="steps" style="margin:4px 0"></div>
+  <div><a href="#" id="allSteps">全选</a> / <a href="#" id="noSteps">清空</a> <span id="ntraj"></span> <span id="err"></span></div>
+  <div><label><input id="anom" type="checkbox" checked>只看异常</label> <span class="hint">任一指标落在所选集合最差 5%：win 最高、Σneg 最低、&lt;-1 最高，flags 列写命中哪几项</span></div>
+  <div class="hint">点表头排序（再点反向），点行切换，j / k 上下条。表头悬停看定义。默认按 Σneg 从小到大，即被打压总量最大的排前面</div>
+  <div class="scroll"><table id="tt"><thead></thead><tbody></tbody></table></div>
+</div>
+<div class="gut" id="gutL" title="拖动调宽度，双击恢复默认"></div>
+<div id="mid">
+  <div id="bar">
+    <label>模式 <select id="mode" autocomplete="off"><option value="one">单指标</option><option value="quad">象限（A × B）</option></select></label>
+    <label>指标 <select id="mSel"></select></label>
+    <label>粒度 <select id="gSel"><option value="token">token</option><option value="word">word（求和）</option></select></label>
+    <label>只上色 |v| ≥ <input id="thr" type="number" step="0.1" min="0" value="0.5" style="width:52px"></label>
+    <label><input id="bd" type="checkbox">token 边界</label>
+    <span id="legend"></span>
+  </div>
+  <div id="qbar">
+    <label>A <select id="qA"></select> <select id="qAop"><option>≤</option><option>≥</option></select>
+      <input id="qAt" type="number" step="0.1" value="-1" style="width:56px"></label>
+    <label>B <select id="qB"></select> <select id="qBop"><option>≥</option><option>≤</option></select>
+      <input id="qBt" type="number" step="0.1" value="1" style="width:56px"></label>
+    <span id="qcnt"></span>
+    <span class="hint">勾选决定哪些象限上色；多 token 单元的值按单指标模式同样的规则聚合；rank 的 −1（不在 top-k）按 +∞ 比较</span>
+  </div>
+  <div id="bar2" style="padding:4px 10px;color:#555;border-bottom:1px solid #eee"></div>
+  <div id="text"></div>
+  <div id="info">鼠标悬停 token 看数值</div>
+</div>
+<div class="gut" id="gutR" title="拖动调宽度，双击恢复默认"></div>
+<div class="side" id="right">
+  <b>最常被打压的 token</b>
+  <div class="hint">所选 step 全部 dump 上按 token id 求 Σ(log p_T − log p_S)，出现 ≥ 5 次，按 Σ 从小到大。点行在当前轨迹里框出，再点取消</div>
+  <div class="scroll"><table id="topt"><thead><tr><th style="text-align:left">token</th><th>n</th><th>Σ</th><th>mean</th></tr></thead><tbody></tbody></table></div>
+</div>
+</div>
+<script>
+// Draggable side-panel widths (left trajectory table / right token table), kept in localStorage.
+for (const [gid, v, sign] of [["gutL", "--lw", 1], ["gutR", "--rw", -1]]) {
+  const app = document.getElementById("app"), g = document.getElementById(gid);
+  const saved = localStorage.getItem("tv" + v); if (saved) app.style.setProperty(v, saved);
+  g.addEventListener("dblclick", () => { app.style.removeProperty(v); localStorage.removeItem("tv" + v); });
+  g.addEventListener("mousedown", e => {
+    e.preventDefault(); g.classList.add("drag");
+    const x0 = e.clientX, w0 = (sign > 0 ? g.previousElementSibling : g.nextElementSibling).getBoundingClientRect().width;
+    const move = ev => { const w = Math.max(160, Math.min(window.innerWidth - 300, w0 + sign * (ev.clientX - x0)));
+                         app.style.setProperty(v, w + "px"); };
+    const up = () => { g.classList.remove("drag"); localStorage.setItem("tv" + v, app.style.getPropertyValue(v));
+                       removeEventListener("mousemove", move); removeEventListener("mouseup", up); };
+    addEventListener("mousemove", move); addEventListener("mouseup", up);
+  });
+}
+// [key, header, first-click descending?, tooltip]
+const COLS = [
+  ["step", "step", false, "训练 step"],
+  ["row", "row", false, "batch 内行号"],
+  ["length", "len", true, "response token 数"],
+  ["score", "score", true, "reward（vanilla OPD 训练不用，仅参考）"],
+  ["truncated", "trunc", true, "达到最大长度且未以 EOS 结尾"],
+  ["neg_sum", "Σneg", false, "Σ min(log p_T − log p_S, 0)：被打压的总量，越小越多"],
+  ["mean_lr", "mean", false, "mean(log p_T − log p_S)"],
+  ["neg_frac", "<-1", true, "log p_T − log p_S < −1 的 token 占比"],
+  ["win_nll", "win", true, "长 32 的窗口里 −log p_S 平均值的最大值；高 = 有一段连续低概率（退化）"],
+  ["lowp_frac", "p<.01", true, "p_S < 0.01 的 token 占比"],
+  ["flags", "flags", true, "命中的异常项（只看异常时用）"],
+];
+// [key, flag name, bad side is high?]; a row is flagged when it is in the worst ANOM_Q of the selected set
+const FLAGS = [["win_nll", "退化", true], ["neg_sum", "打压", false], ["neg_frac", "<-1", true]];
+const ANOM_Q = 0.05;
+let M = {}, R = [], TOP = [], cache = new Map();
+let cur = -1, shown = null, sortKey = "neg_sum", sortDesc = false, order = [], hl = null, runs = [];
+// Quadrant mode: [name, colour]; index = (A holds ? 0 : 2) + (B holds ? 0 : 1)
+const QC = [["A 且 B", "rgba(220,38,38,0.65)"], ["仅 A", "rgba(234,88,12,0.4)"],
+            ["仅 B", "rgba(37,99,235,0.4)"], ["都不满足", "rgba(120,120,120,0.25)"]];
+const qOn = [true, true, true, false];
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = v => v === null || v === undefined ? "" : typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(3))
+                 : v === true ? "Y" : v === false ? "" : String(v);
+async function api(path, q) {
+  const r = await fetch(path + "?" + new URLSearchParams(q));
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+const run = () => $("runSel").value;
+const pickedSteps = () => [...$("steps").querySelectorAll("input:checked")].map(x => +x.value);
+const key = r => `${run()}|${r.step}|${r.row}`;
+function err(e) { $("err").textContent = e ? String(e.message || e) : ""; }
+
+async function init() {
+  $("tt").tHead.innerHTML = "<tr>" + COLS.map(([k, n, , t]) => `<th data-k="${k}" title="${esc(t)}">${esc(n)}</th>`).join("") + "</tr>";
+  $("tt").tHead.onclick = e => {
+    const k = e.target.dataset.k; if (!k) return;
+    sortDesc = k === sortKey ? !sortDesc : COLS.find(c => c[0] === k)[2]; sortKey = k; table();
+  };
+  $("tt").tBodies[0].onclick = e => { const tr = e.target.closest("tr"); if (tr) select(+tr.dataset.i); };
+  $("topt").tBodies[0].onclick = e => {
+    const tr = e.target.closest("tr"); if (!tr) return;
+    const id = +tr.dataset.id; hl = hl === id ? null : id;
+    for (const x of $("topt").tBodies[0].rows) x.classList.toggle("sel", +x.dataset.id === hl);
+    render();
+  };
+  $("runSel").onchange = () => { stepBoxes(); loadTrajs(); };
+  $("steps").onchange = loadTrajs;
+  $("anom").onchange = () => { table(); if (order.length && !order.includes(cur)) select(order[0]); };
+  $("allSteps").onclick = e => { e.preventDefault(); $("steps").querySelectorAll("input").forEach(x => x.checked = true); loadTrajs(); };
+  $("noSteps").onclick = e => { e.preventDefault(); $("steps").querySelectorAll("input").forEach(x => x.checked = false); loadTrajs(); };
+  for (const id of ["mSel", "gSel", "qA", "qB", "qAop", "qBop"]) $(id).onchange = render;
+  $("thr").oninput = render;
+  for (const id of ["qAt", "qBt"]) $(id).oninput = render;
+  $("mode").onchange = () => {
+    const q = $("mode").value === "quad";
+    $("qbar").style.display = q ? "flex" : "none";
+    for (const id of ["mSel", "thr"]) $(id).disabled = q;
+    render();
+  };
+  $("qcnt").onchange = e => { const i = e.target.dataset.q; if (i !== undefined) { qOn[+i] = e.target.checked; render(); } };
+  $("bd").onchange = () => $("text").classList.toggle("bd", $("bd").checked);
+  document.onkeydown = e => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    const p = order.indexOf(cur);
+    if (e.key === "j" && p < order.length - 1) select(order[p + 1]);
+    else if (e.key === "k" && p > 0) select(order[p - 1]);
+  };
+  $("text").onmouseover = e => { const s = e.target.closest("span.u"); if (s) info(+s.dataset.a, +s.dataset.b, s.dataset.t); };
+  try { runs = await api("/api/runs", {}); } catch (e) { return err(e); }
+  $("runSel").innerHTML = runs.map(r => `<option>${esc(r.run)}</option>`).join("");
+  stepBoxes(); loadTrajs();
+}
+
+function stepBoxes() {
+  const r = runs.find(x => x.run === run());
+  $("steps").innerHTML = r.steps.map(s => `<label><input type="checkbox" value="${s}" checked>${s}</label>`).join("");
+}
+
+async function loadTrajs() {
+  const st = pickedSteps(); err();
+  if (!st.length) { R = []; table(); return; }
+  $("ntraj").textContent = "加载中…";
+  let d; try { d = await api("/api/trajs", {run: run(), steps: st.join(",")}); } catch (e) { return err(e); }
+  M = d.metrics; R = d.rows; TOP = d.top; cur = -1; markFlags();
+  const m0 = $("mSel").value || "logratio";
+  $("mSel").innerHTML = Object.keys(M).map(m => `<option value="${m}">${esc(M[m].label)}</option>`).join("");
+  $("mSel").value = m0;
+  const opts = Object.keys(M).map(m => `<option value="${m}">${esc(M[m].label)}</option>`).join("");
+  const qa0 = $("qA").value, qb0 = $("qB").value, first = !qa0;
+  $("qA").innerHTML = opts; $("qB").innerHTML = opts;
+  $("qA").value = M[qa0] ? qa0 : "logratio";
+  $("qB").value = M[qb0] ? qb0 : M.teacher_entropy ? "teacher_entropy" : "student_logp";
+  if (first && $("qB").value === "student_logp") { $("qBop").value = "≤"; $("qBt").value = -2; }
+  $("topt").tBodies[0].innerHTML = TOP.map(([id, p, n, s, m]) =>
+    `<tr data-id="${id}" class="${id === hl ? "sel" : ""}"><td style="text-align:left">${esc(JSON.stringify(p))}</td><td>${n}</td><td>${s.toFixed(1)}</td><td>${m.toFixed(2)}</td></tr>`).join("");
+  table();
+  if (order.length) select(order[0]);
+}
+
+function markFlags() {
+  for (const r of R) r.flags = "";
+  if (!R.length) return;
+  for (const [k, name, high] of FLAGS) {
+    const v = R.map(r => r[k]).sort((a, b) => a - b);
+    const cut = high ? v[Math.floor((1 - ANOM_Q) * (v.length - 1))] : v[Math.ceil(ANOM_Q * (v.length - 1))];
+    for (const r of R) if (high ? r[k] >= cut : r[k] <= cut) r.flags += (r.flags ? "," : "") + name;
+  }
+}
+
+function table() {
+  order = R.map((r, i) => i).filter(i => !$("anom").checked || R[i].flags);
+  order.sort((a, b) => {
+    const x = R[a][sortKey] ?? -Infinity, y = R[b][sortKey] ?? -Infinity;
+    return (x < y ? -1 : x > y ? 1 : 0) * (sortDesc ? -1 : 1);
+  });
+  $("ntraj").textContent = `${order.length} / ${R.length} 条`;
+  for (const th of $("tt").tHead.rows[0].cells) th.classList.toggle("on", th.dataset.k === sortKey);
+  $("tt").tBodies[0].innerHTML = order.map(i => `<tr data-i="${i}" class="${i === cur ? "sel" : ""}">` +
+    COLS.map(([k]) => `<td>${esc(fmt(R[i][k]))}</td>`).join("") + "</tr>").join("");
+}
+
+async function select(i) {
+  cur = i;
+  for (const tr of $("tt").tBodies[0].rows) tr.classList.toggle("sel", +tr.dataset.i === i);
+  const tr = $("tt").querySelector("tr.sel"); if (tr) tr.scrollIntoView({block: "nearest"});
+  const r = R[i], k = key(r);
+  if (!cache.has(k)) {
+    try { cache.set(k, await api("/api/traj", {run: run(), steps: r.step, row: r.row})); } catch (e) { return err(e); }
+  }
+  if (cur === i) render();
+}
+// display units -> [start, end, text]; word mode merges letter/digit runs not separated by whitespace
+const wordy = t => /^ ?[\p{L}\p{N}_]+$/u.test(t);
+function groups(t) {
+  const out = []; let k = 0;
+  for (const [s, n] of t.units) { out.push([k, k + n, s]); k += n; }
+  if ($("gSel").value === "token") return out;
+  const w = [];
+  for (const g of out) {
+    const last = w[w.length - 1];
+    if (last && wordy(g[2]) && wordy(last[2]) && !/^\s/.test(g[2])) { last[1] = g[1]; last[2] += g[2]; }
+    else w.push(g.slice());
+  }
+  return w;
+}
+
+function color(v, m) {
+  const s = M[m], thr = +$("thr").value || 0;
+  if (s.kind === "rank" && v < 0) return "rgba(147,51,234,0.75)";  // outside teacher top-k
+  const mag = s.kind === "div" ? Math.abs(v) : s.kind === "seq" ? -v : v;
+  if (mag < thr || mag <= 0) return "";
+  const a = (0.12 + 0.78 * Math.min(mag / s.scale, 1)).toFixed(2);
+  if (s.kind === "seq" || s.kind === "pos" || s.kind === "rank") return `rgba(234,88,12,${a})`;
+  return v < 0 ? `rgba(220,38,38,${a})` : `rgba(37,99,235,${a})`;
+}
+
+// Per display unit: log-domain metrics add up; entropy / rank take the max (rank: -1 wins).
+function agg(v, a, b, m) {
+  const k = M[m].kind;
+  if (k !== "pos" && k !== "rank") { let x = 0; for (let i = a; i < b; i++) x += v[i]; return x; }
+  let x = -Infinity;
+  for (let i = a; i < b; i++) { if (k === "rank" && v[i] < 0) return -1; x = Math.max(x, v[i]); }
+  return x;
+}
+
+function legend(m) {
+  const s = M[m], x = s.scale.toFixed(2);
+  const grad = `<span class="leg" style="background:linear-gradient(90deg,#fff,rgb(234,88,12))"></span>`;
+  $("legend").innerHTML = s.kind === "div"
+    ? `−${x}<span class="leg" style="background:linear-gradient(90deg,rgb(220,38,38),#fff,rgb(37,99,235))"></span>+${x}（红=被打压，颜色在 p99 |v| 处饱和）`
+    : s.kind === "seq" ? `0${grad}−${x}（越深概率越低）`
+    : s.kind === "pos" ? `0${grad}${x}（越深 teacher 越不确定，p99 处饱和；多 token 单元取 max）`
+    : `0${grad}${x}（越深名次越靠后；<span style="background:rgba(147,51,234,0.75);color:#fff">&nbsp;紫&nbsp;</span>=不在 teacher top-k；名次 0 不着色）`;
+}
+
+// Quadrant of one display unit; rank -1 (outside teacher top-k) compares as +Infinity.
+function qval(t, a, b, m) { const x = agg(t.v[m], a, b, m); return M[m].kind === "rank" && x < 0 ? Infinity : x; }
+function quadOf(t, a, b) {
+  const test = (m, op, th) => { const x = qval(t, a, b, m); return op === "≥" ? x >= th : x <= th; };
+  const ca = test($("qA").value, $("qAop").value, +$("qAt").value);
+  const cb = test($("qB").value, $("qBop").value, +$("qBt").value);
+  return (ca ? 0 : 2) + (cb ? 0 : 1);
+}
+
+function qlegend(cnt) {
+  const d = (k, op, th) => `${esc(M[$(k).value].label)} ${$(op).value} ${+$(th).value}`;
+  $("legend").innerHTML = `A: ${d("qA", "qAop", "qAt")} &nbsp; B: ${d("qB", "qBop", "qBt")}`;
+  const tot = cnt.reduce((x, y) => x + y, 0) || 1;
+  $("qcnt").innerHTML = QC.map(([n, c], i) => `<label><input type="checkbox" data-q="${i}" ${qOn[i] ? "checked" : ""}>` +
+    `<span class="sw" style="background:${c}">${n}</span> ${cnt[i]} (${(100 * cnt[i] / tot).toFixed(1)}%)</label>`).join(" ");
+}
+
+function render() {
+  const r = R[cur]; if (!r) { $("text").replaceChildren(); $("bar2").textContent = ""; return; }
+  const t = cache.get(key(r)); if (!t) return;
+  const quad = $("mode").value === "quad", cnt = [0, 0, 0, 0];
+  const m = $("mSel").value, v = t.v[m], box = $("text");
+  const frag = document.createDocumentFragment();
+  for (const [a, b, s] of groups(t)) {
+    const e = document.createElement("span");
+    e.className = "u"; e.dataset.a = a; e.dataset.b = b; e.dataset.t = s;
+    e.textContent = s.replace(/\n/g, "↵\n");
+    if (quad) { const q = quadOf(t, a, b); cnt[q]++; e.style.background = qOn[q] ? QC[q][1] : ""; }
+    else e.style.background = color(agg(v, a, b, m), m);
+    if (hl !== null && t.ids.slice(a, b).includes(hl)) e.classList.add("hl");
+    frag.appendChild(e);
+  }
+  box.replaceChildren(frag);
+  if (shown !== key(r)) { box.scrollTop = 0; shown = key(r); }
+  const nh = hl === null ? "" : ` | 框出 ${t.ids.filter(x => x === hl).length} 处`;
+  $("bar2").textContent = `step ${r.step}  row ${r.row}  len ${r.length}  score ${fmt(r.score)}` +
+    `${r.truncated ? "  截断" : ""}  Σneg ${r.neg_sum.toFixed(1)}  win ${r.win_nll.toFixed(2)}  uid ${r.uid}${nh}` +
+    "  （dump 里没有 prompt，只显示 response）";
+  if (quad) qlegend(cnt); else legend(m);
+}
+
+function info(a, b, s) {
+  const t = cache.get(key(R[cur])), ks = Object.keys(M);
+  const lines = [`${JSON.stringify(s)}  token #${a}${b - a > 1 ? ".." + (b - 1) : ""}` +
+    ($("mode").value === "quad" ? `  象限: ${QC[quadOf(t, a, b)][0]}` : "")];
+  for (let k = a; k < Math.min(b, a + 30); k++)
+    lines.push(`#${k} id=${t.ids[k]}  p_S=${Math.exp(t.v.student_logp[k]).toFixed(3)}  p_T=${Math.exp(t.v.teacher_logp[k]).toFixed(3)}  ` +
+               ks.map(m => `${M[m].label}=${t.v[m][k].toFixed(3)}`).join("  "));
+  $("info").textContent = lines.join("\n");
+}
+
+init();
+</script></body></html>
