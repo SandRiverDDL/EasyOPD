@@ -122,6 +122,10 @@ val_kwargs:
   # Whether to sample during training rollout. False uses greedy sampling.
   do_sample: False
 
+  # [EasyOPD:VAL_LEN] Max new tokens for validation. null -> same as rollout.response_length.
+  response_length: null
+  # [EasyOPD:VAL_LEN] End
+
 # Multi-turn interaction config for tools or chat.
 multi_turn:
 

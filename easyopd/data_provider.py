@@ -171,6 +171,21 @@ DATASET_RECIPES: dict[str, dict[str, Any]] = {
     },
 }
 
+# Same-tokenizer OPD methods (easyopd/opd/): all math reasoning on DAPO-Math-17k.
+# The 8-GPU launchers build their own parquet from the local copy under
+# /mnt/NLU_disk17/chenhaoyu02/data/DAPO-Math-17k (see experiments/07_opd_repro/).
+for _name in (
+    "vanilla_opd", "power_opd", "topd", "dial_opd", "ier", "v_opd",
+    "eopd", "revisit_opd", "aopd", "res_opd", "rock_tokens", "distillm2",
+):
+    DATASET_RECIPES[_name] = {
+        "dataset": "BytedTsinghua-SIA/DAPO-Math-17k",
+        "dataset_split": "train",
+        "prompt_template": "math_qa",
+        "description": f"DAPO-Math-17k for same-tokenizer OPD method {_name}",
+    }
+del _name
+
 # ---------------------------------------------------------------------------
 # Prompt templates: how to convert raw dataset fields into chat messages
 # ---------------------------------------------------------------------------

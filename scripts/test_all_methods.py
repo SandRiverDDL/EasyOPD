@@ -74,7 +74,15 @@ def run_test(name: str, test_fn) -> TestResult:
 # Tests
 # ---------------------------------------------------------------------------
 
-EXPECTED_METHODS = ["echo_kd", "g_opd", "gad", "gkd", "lightning_opd", "opcd", "opsa", "ropd", "sdpo", "simct", "simple", "sod", "vision_opd"]
+# Same-tokenizer OPD methods (easyopd/opd/): they plug into verl through the
+# unified [EasyOPD:OPD] touchpoints (batch_stage on the driver, actor_loss in
+# update_policy), not through HookDispatcher, so they have no LossHook.
+OPD_METHODS = {"vanilla_opd", "power_opd", "topd", "dial_opd", "ier", "v_opd", "eopd", "revisit_opd", "aopd", "res_opd", "rock_tokens", "distillm2", "semi_opd"}
+
+EXPECTED_METHODS = sorted(
+    ["echo_kd", "g_opd", "gad", "gkd", "lightning_opd", "opcd", "opsa", "ropd", "sdpo", "simct", "simple", "sod", "vision_opd"]
+    + list(OPD_METHODS)
+)
 
 # Methods that integrate with verl outside the actor-side HookDispatcher and
 # therefore legitimately have no actor LossHook / RolloutHook / RewardHook /
@@ -85,7 +93,7 @@ EXPECTED_METHODS = ["echo_kd", "g_opd", "gad", "gkd", "lightning_opd", "opcd", "
 # plus a data adapter that lifts precomputed teacher log-probabilities from
 # parquet into a padded tensor; actor / critic / reward-manager surfaces
 # remain on verl's unmodified path.
-NON_ACTOR_HOOK_METHODS = {"gad", "lightning_opd"}
+NON_ACTOR_HOOK_METHODS = {"gad", "lightning_opd"} | OPD_METHODS
 
 
 def test_auto_discover():

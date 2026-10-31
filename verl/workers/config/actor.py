@@ -244,6 +244,11 @@ class ActorConfig(BaseConfig):
     opsa_tfr_threshold: float = 0.8
     # ============ [EasyOPD:OPSA] End ============
 
+    # [EasyOPD:OPD] unified same-tokenizer OPD methods (easyopd/opd). Free-form:
+    # `method` selects a registered OPDMethod, other keys are its hyper-parameters.
+    opd: dict[str, Any] = field(default_factory=dict)
+    # [EasyOPD:OPD] End
+
     def __post_init__(self):
         """Validate actor configuration parameters."""
         assert self.strategy != MISSING

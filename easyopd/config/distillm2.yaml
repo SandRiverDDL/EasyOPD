@@ -1,0 +1,12 @@
+# EasyOPD distillm2 config (same-tokenizer OPD, easyopd/opd/).
+# Enable in verl with +actor_rollout_ref.actor.opd.method=distillm2; method keys go
+# under +actor_rollout_ref.actor.opd.<key>. See easyopd/docs/methods/distillm2.md.
+easyopd:
+  method:
+    name: distillm2
+
+data:
+  dataset: BytedTsinghua-SIA/DAPO-Math-17k
+  dataset_split: train
+  prompt_template: math_qa
+  prompt_key: prompt

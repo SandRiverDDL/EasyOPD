@@ -31,6 +31,7 @@ actor_rollout_ref:
     use_torch_compile: true
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl
+    opd: {}
     ppo_epochs: 1
     shuffle: false
     checkpoint:
@@ -198,6 +199,7 @@ actor_rollout_ref:
       temperature: 0
       'n': 1
       do_sample: false
+      response_length: null
     multi_turn:
       _target_: verl.workers.config.MultiTurnConfig
       enable: false

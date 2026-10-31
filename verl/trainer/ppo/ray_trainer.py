@@ -1518,6 +1518,16 @@ class RayPPOTrainer:
             return None, {}
     # ============ [EasyOPD:OPSA] End ============
 
+    # [EasyOPD:OPD] unified same-tokenizer OPD methods (easyopd/opd)
+    def _easyopd_opd(self):
+        """Return (OPDMethod class, cfg) when actor.opd.method is set, else (None, None)."""
+        if not hasattr(self, "_easyopd_opd_cache"):
+            from easyopd.opd import get_opd_method
+
+            self._easyopd_opd_cache = get_opd_method(self.config.actor_rollout_ref.actor)
+        return self._easyopd_opd_cache
+    # [EasyOPD:OPD] End
+
     def _apply_filter_groups(self, batch: DataProto) -> DataProto:
         cfg = getattr(self.config.algorithm, "filter_groups", None)
         if cfg is None or not getattr(cfg, "enable", False):
@@ -2032,8 +2042,41 @@ class RayPPOTrainer:
                 worker_group=self.actor_rollout_wg,
             )
 
-    def _save_checkpoint(self):
+    # [EasyOPD:CKPT] Keep the newest `keep` global_step_* dirs under `root`. Runs on the driver, which shares
+    # the node-local default_local_dir with rank 0 (single-node runs; the original data.pt save assumes the same).
+    @staticmethod
+    def _rotate_ckpts(root, keep):
+        import re
+        import shutil
+
+        if not keep or keep <= 0 or not os.path.isdir(root):
+            return
+        steps = sorted(int(m.group(1)) for d in os.listdir(root) if (m := re.fullmatch(r"global_step_(\d+)", d)))
+        for s in steps[:-keep]:
+            path = os.path.join(root, f"global_step_{s}")
+            print(f"[EasyOPD:CKPT] removing old checkpoint {path}")
+            shutil.rmtree(path, ignore_errors=True)
+
+    # [EasyOPD:CKPT] End
+
+    def _save_checkpoint(self, kind="full"):
         from verl.utils.fs import local_mkdir_safe
+
+        # [EasyOPD:CKPT] kind="weights" -> <default_local_dir>/weights/global_step_N/actor, model shards only,
+        # no data.pt and no latest_checkpointed_iteration.txt, so resume_mode=auto only ever sees full ckpts.
+        # When weights saves are on, both kinds rotate here (by directory scan) instead of in the checkpoint
+        # manager, whose single previous_saved_paths list would otherwise mix the two kinds.
+        weights_mode = (self.config.trainer.get("save_weights_freq", -1) or -1) > 0
+        if kind == "weights":
+            weights_root = os.path.join(self.config.trainer.default_local_dir, "weights")
+            actor_local_path = os.path.join(weights_root, f"global_step_{self.global_steps}", "actor")
+            print(f"[EasyOPD:CKPT] weights-only checkpoint: {actor_local_path}")
+            self.actor_rollout_wg.save_checkpoint(
+                actor_local_path, None, self.global_steps, max_ckpt_to_keep=None, save_contents=["model"]
+            )
+            self._rotate_ckpts(weights_root, self.config.trainer.get("max_weights_ckpt_to_keep", None))
+            return
+        # [EasyOPD:CKPT] End
 
         # path: given_path + `/global_step_{global_steps}` + `/actor`
         local_global_step_folder = os.path.join(
@@ -2062,6 +2105,11 @@ class RayPPOTrainer:
             self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
         )
 
+        # [EasyOPD:CKPT] In weights mode, full ckpts are also rotated by directory scan (after the save below).
+        if weights_mode:
+            max_actor_ckpt_to_keep = None
+        # [EasyOPD:CKPT] End
+
         self.actor_rollout_wg.save_checkpoint(
             actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep
         )
@@ -2089,6 +2137,11 @@ class RayPPOTrainer:
         )
         with open(local_latest_checkpointed_iteration, "w") as f:
             f.write(str(self.global_steps))
+
+        # [EasyOPD:CKPT] rotate full ckpts after the tracker points at the new one
+        if weights_mode:
+            self._rotate_ckpts(self.config.trainer.default_local_dir, self.config.trainer.get("max_actor_ckpt_to_keep"))
+        # [EasyOPD:CKPT] End
 
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == "disable":
@@ -2272,7 +2325,16 @@ class RayPPOTrainer:
                 with marked_timer("step", timing_raw):
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
-                        if not self.async_rollout_mode:
+                        # [EasyOPD:semi_opd] replay the stored offline student response instead of generating
+                        if "offline_response_ids" in gen_batch.non_tensor_batch:
+                            from easyopd.methods.semi_opd.replay import build_offline_gen_output
+
+                            gen_batch_output = build_offline_gen_output(
+                                gen_batch, self.config.data.max_response_length, self.tokenizer.pad_token_id
+                            )
+                            metrics["semi_opd/replayed"] = 1.0
+                        # [EasyOPD:semi_opd] End
+                        elif not self.async_rollout_mode:
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
                         else:
                             gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
@@ -2335,13 +2397,30 @@ class RayPPOTrainer:
 
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, color="blue"):
+                        # [EasyOPD:OPD] ask the actor for its old-policy top-k (vOPD / IER / diagnostics)
+                        from easyopd.opd import trainer_signals as _opd_trainer_signals
+
+                        _opd_method, _opd_cfg = self._easyopd_opd()
+                        _opd_sig = _opd_trainer_signals(_opd_method, _opd_cfg)
+                        if _opd_sig is not None and _opd_sig.student_topk > 0:
+                            batch.meta_info["opsa_topk_k"] = int(_opd_sig.student_topk)
+                        # [EasyOPD:OPD] End
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                        # [EasyOPD:OPD]
+                        batch.meta_info.pop("opsa_topk_k", None)
+                        old_log_prob.meta_info.pop("opsa_topk_k", None)
+                        # [EasyOPD:OPD] End
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
                         entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
                         old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
                         metrics.update(old_log_prob_metrics)
+                        # [EasyOPD:OPD] keep per-token student entropy on token-dump steps (popped after the dump)
+                        _dump_freq = int((_opd_cfg or {}).get("dump_freq", 0) or 0)
+                        if _opd_method is not None and _dump_freq > 0 and self.global_steps % _dump_freq == 0:
+                            old_log_prob.batch["old_entropy"] = entropys
+                        # [EasyOPD:OPD] End
                         old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
 
@@ -2385,10 +2464,35 @@ class RayPPOTrainer:
                                 )
                             # ============ [EasyOPD] End ============
 
+                            # [EasyOPD:OPD] request teacher top-k / entropy / gather at student top-k
+                            from easyopd.opd import restore_terminal as _opd_restore_terminal
+                            from easyopd.opd import swap_terminal_for_teacher as _opd_swap_terminal
+                            from easyopd.opd import trainer_signals as _opd_trainer_signals
+
+                            _opd_method, _opd_cfg = self._easyopd_opd()
+                            _opd_sig = _opd_trainer_signals(_opd_method, _opd_cfg)
+                            _opd_meta = {}
+                            if _opd_sig is not None:
+                                if _opd_sig.teacher_topk > 0:
+                                    _opd_meta["opsa_topk_k"] = int(_opd_sig.teacher_topk)
+                                if _opd_sig.teacher_entropy:
+                                    _opd_meta["opd_ref_entropy"] = True
+                                if _opd_sig.teacher_at_student_topk:
+                                    _opd_meta["opd_gather_key"] = "old_topk_indices"
+                            batch.meta_info.update(_opd_meta)
+                            # teacher scores <|im_end|> where the student ended with <|endoftext|> (opd.terminal_stop)
+                            _opd_eos_info = _opd_swap_terminal(batch, _opd_cfg) if _opd_method is not None else None
+                            # [EasyOPD:OPD] End
                             if not self.ref_in_actor:
                                 ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                             else:
                                 ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
+                            # [EasyOPD:OPD]
+                            metrics.update(_opd_restore_terminal(batch, _opd_eos_info))
+                            for _k in _opd_meta:
+                                batch.meta_info.pop(_k, None)
+                                ref_log_prob.meta_info.pop(_k, None)
+                            # [EasyOPD:OPD] End
                             batch = batch.union(ref_log_prob)
 
                     # ============ [EasyOPD] Compute base model log probs for corrected reward ============
@@ -2491,9 +2595,25 @@ class RayPPOTrainer:
                             config=self.config.algorithm,
                         )
 
+                        # [EasyOPD:RL_METRICS] per-step counts of all-correct / all-wrong / mixed prompt groups,
+                        # before filter_groups so dropped groups are counted too
+                        from easyopd.rl_metrics import group_outcome_metrics
+
+                        metrics.update(group_outcome_metrics(batch, self.config.actor_rollout_ref.rollout.n))
+                        # [EasyOPD:RL_METRICS] End
+
                         batch = self._apply_filter_groups(batch)
                         if len(batch) == 0:
                             continue
+                        # [EasyOPD:OPD] method-specific advantages / token selection over the whole batch
+                        _opd_method, _opd_cfg = self._easyopd_opd()
+                        if _opd_method is not None:
+                            from easyopd.opd import run_batch_stage as run_easyopd_batch_stage
+
+                            metrics.update(
+                                run_easyopd_batch_stage(batch, _opd_method, _opd_cfg, step=self.global_steps)
+                            )
+                        # [EasyOPD:OPD] End
                         self._record_sample(batch, self.sample_traces, self.sample_log_path)
 
                         token_kl_cfg = getattr(self.config.algorithm, "token_kl_reg", None)
@@ -2643,13 +2763,29 @@ class RayPPOTrainer:
                 # 2. It's the last training step.
                 # 3. The current step number is a multiple of the save frequency.
                 # 4. The ESI(Elastic Server Instance)/training plan is close to expiration.
-                if self.config.trainer.save_freq > 0 and (
-                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0 or esi_close_to_expiration
-                ):
+                # [EasyOPD:CKPT] Two checkpoint kinds with separate frequency / retention:
+                #   full    (model + optimizer + extra, resumable): trainer.save_freq, trainer.max_actor_ckpt_to_keep
+                #   weights (model shards only, for eval):          trainer.save_weights_freq, trainer.max_weights_ckpt_to_keep
+                # With save_weights_freq <= 0 this is the original condition. When weights are on, the last step
+                # always gets a weights save and a full save only if save_freq divides it (or ESI forces one).
+                save_weights_freq = self.config.trainer.get("save_weights_freq", -1) or -1
+                full_due = self.config.trainer.save_freq > 0 and (
+                    self.global_steps % self.config.trainer.save_freq == 0
+                    or esi_close_to_expiration
+                    or (is_last_step and save_weights_freq <= 0)
+                )
+                weights_due = save_weights_freq > 0 and (is_last_step or self.global_steps % save_weights_freq == 0)
+                if full_due or weights_due:
                     if esi_close_to_expiration:
                         print("Force saving checkpoint: ESI instance expiration approaching.")
+                    # Both due -> save both: the weights dir rotates on its own, so it must not rely on a full ckpt
+                    # that the full-ckpt retention may delete later.
                     with marked_timer("save_checkpoint", timing_raw, color="green"):
-                        self._save_checkpoint()
+                        if full_due:
+                            self._save_checkpoint(kind="full")
+                        if weights_due:
+                            self._save_checkpoint(kind="weights")
+                # [EasyOPD:CKPT] End
 
                 with marked_timer("stop_profile", timing_raw):
                     next_step_profile = (

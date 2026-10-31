@@ -1,0 +1,12 @@
+# EasyOPD rock_tokens config (same-tokenizer OPD, easyopd/opd/).
+# Enable in verl with +actor_rollout_ref.actor.opd.method=rock_tokens; method keys go
+# under +actor_rollout_ref.actor.opd.<key>. See easyopd/docs/methods/rock_tokens.md.
+easyopd:
+  method:
+    name: rock_tokens
+
+data:
+  dataset: BytedTsinghua-SIA/DAPO-Math-17k
+  dataset_split: train
+  prompt_template: math_qa
+  prompt_key: prompt

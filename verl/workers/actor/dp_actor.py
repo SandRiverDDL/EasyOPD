@@ -665,6 +665,14 @@ class DataParallelPPOActor(BasePPOActor):
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
         select_keys = ["responses", "input_ids", "attention_mask", "position_ids"]
         non_tensor_select_keys = ["multi_modal_inputs"] if has_multi_modal_inputs else []
+        # [EasyOPD:OPD] optionally gather log-probs at given (B, R, K) token ids (e.g. student top-k)
+        opd_gather_key = data.meta_info.get("opd_gather_key", None)
+        if opd_gather_key is not None:
+            if opd_gather_key not in data.batch.keys():
+                raise KeyError(f"[EasyOPD:OPD] opd_gather_key={opd_gather_key!r} not in batch")
+            select_keys = select_keys + [opd_gather_key]
+        opd_gathered_lst = []
+        # [EasyOPD:OPD] End
 
         data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
 
@@ -682,14 +690,24 @@ class DataParallelPPOActor(BasePPOActor):
             micro_batch = micro_batch.to(get_device_id())
             model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch}
             with torch.no_grad():
-                if opsa_topk_k is not None and opsa_topk_k > 0:
+                _want_topk = opsa_topk_k is not None and opsa_topk_k > 0
+                if _want_topk or opd_gather_key is not None:
                     entropy, log_probs, opsa_extra = self._forward_micro_batch(
                         model_inputs, temperature=temperature, calculate_entropy=calculate_entropy,
-                        opsa_topk_k=int(opsa_topk_k),
+                        opsa_topk_k=int(opsa_topk_k) if _want_topk else None,
+                        # [EasyOPD:OPD]
+                        opsa_gather_indices=(
+                            micro_batch.batch[opd_gather_key] if opd_gather_key is not None else None
+                        ),
+                        # [EasyOPD:OPD] End
                     )
                     if "topk_log_probs" in opsa_extra:
                         opsa_topk_values_lst.append(opsa_extra["topk_log_probs"])
                         opsa_topk_indices_lst.append(opsa_extra["topk_indices"])
+                    # [EasyOPD:OPD]
+                    if "gathered_log_probs" in opsa_extra:
+                        opd_gathered_lst.append(opsa_extra["gathered_log_probs"])
+                    # [EasyOPD:OPD] End
                 else:
                     entropy, log_probs = self._forward_micro_batch(
                         model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
@@ -723,6 +741,19 @@ class DataParallelPPOActor(BasePPOActor):
         # We avoid changing the public return type to keep backward compatibility.
         self._last_opsa_topk_log_probs = opsa_topk_values
         self._last_opsa_topk_indices = opsa_topk_indices
+        # [EasyOPD:OPD]
+        opd_gathered = None
+        if opd_gather_key is not None:
+            if len(opd_gathered_lst) != len(log_probs_lst):
+                raise RuntimeError(
+                    "[EasyOPD:OPD] gather requested but _forward_micro_batch returned no gathered_log_probs "
+                    "(needs use_remove_padding or plain path, no fused kernels, ulysses_sp=1)"
+                )
+            opd_gathered = torch.concat(opd_gathered_lst, dim=0)
+            if use_dynamic_bsz:
+                opd_gathered = restore_dynamic_batch(opd_gathered, batch_idx_list)
+        self._last_opd_gathered = opd_gathered
+        # [EasyOPD:OPD] End
 
         return log_probs, entropys
 
@@ -832,6 +863,18 @@ class DataParallelPPOActor(BasePPOActor):
             # ============ [EasyOPD:OPSA] End ============
         # ============ [EasyOPD:OPSA] End ============
 
+        # [EasyOPD:OPD] unified same-tokenizer OPD methods: keep teacher signals / opd_* tensors
+        from easyopd.opd import actor_keys as _opd_actor_keys
+        from easyopd.opd import get_opd_method as _get_opd_method
+
+        _opd_method, _opd_cfg = _get_opd_method(self.config)
+        _opd_sig = _opd_method.signals(_opd_cfg) if _opd_method is not None else None
+        if _opd_method is not None:
+            for _k in _opd_actor_keys(set(data.batch.keys())):
+                if _k not in select_keys:
+                    select_keys.append(_k)
+        # [EasyOPD:OPD] End
+
         data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
 
         # Split to make minibatch iterator for updating the actor
@@ -883,6 +926,10 @@ class DataParallelPPOActor(BasePPOActor):
                     opsa_gather_indices = None
                     if self.config.get("opsa_enable", False) and "opsa_teacher_topk_indices" in model_inputs:
                         opsa_gather_indices = model_inputs["opsa_teacher_topk_indices"]
+                    # [EasyOPD:OPD] current student log-probs at the teacher top-k ids (EOPD / AOPD / ...)
+                    if _opd_sig is not None and _opd_sig.student_gather_teacher_topk:
+                        opsa_gather_indices = model_inputs["ref_topk_indices"]
+                    # [EasyOPD:OPD] End
                     simple_xtok_requested = (
                         self.config.policy_loss.get("loss_mode", "vanilla") in ("simple", "simct", "alm", "uld", "dskd")
                         and "teacher_hidden_states" in model_inputs
@@ -927,6 +974,29 @@ class DataParallelPPOActor(BasePPOActor):
                         old_log_prob = log_prob.detach()
                     else:
                         old_log_prob = model_inputs["old_log_probs"]
+
+                    # [EasyOPD:OPD] single dispatch point for every registered OPDMethod
+                    if _opd_method is not None:
+                        _mb = dict(model_inputs)
+                        _mb.update(
+                            log_prob=log_prob,
+                            old_log_prob=old_log_prob,
+                            advantages=advantages,
+                            response_mask=response_mask,
+                            entropy=entropy,
+                            student_gathered_log_probs=student_topk_log_probs,
+                        )
+                        _opd_loss, _opd_metrics = _opd_method.actor_loss(_mb, _opd_cfg, self.config)
+                        if entropy_coeff != 0:
+                            _ent = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+                            _opd_loss = _opd_loss - _ent * entropy_coeff
+                            micro_batch_metrics["actor/entropy_loss"] = _ent.detach().item()
+                        (_opd_loss * loss_scale_factor).backward()
+                        micro_batch_metrics["actor/pg_loss"] = _opd_loss.detach().item() * loss_scale_factor
+                        micro_batch_metrics.update({f"actor/{k}": v for k, v in _opd_metrics.items()})
+                        append_to_dict(metrics, micro_batch_metrics)
+                        continue
+                    # [EasyOPD:OPD] End
 
                     # ============ [EasyOPD] Compute G-OPD advantages ============
                     if self.config.policy_loss.only_reverse_kl_advantages:

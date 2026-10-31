@@ -1,0 +1,12 @@
+# EasyOPD eopd config (same-tokenizer OPD, easyopd/opd/).
+# Enable in verl with +actor_rollout_ref.actor.opd.method=eopd; method keys go
+# under +actor_rollout_ref.actor.opd.<key>. See easyopd/docs/methods/eopd.md.
+easyopd:
+  method:
+    name: eopd
+
+data:
+  dataset: BytedTsinghua-SIA/DAPO-Math-17k
+  dataset_split: train
+  prompt_template: math_qa
+  prompt_key: prompt

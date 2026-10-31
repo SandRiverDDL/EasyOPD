@@ -141,6 +141,12 @@ class vLLMRollout(BaseRollout):
             )
 
         max_model_len = int(config.max_model_len or config.prompt_length + config.response_length)
+        # [EasyOPD:VAL_LEN] validation may generate longer than training rollouts; size the engine for both.
+        self.val_response_length = int(
+            getattr(config.val_kwargs, "response_length", None) or config.response_length
+        )
+        max_model_len = max(max_model_len, config.prompt_length + self.val_response_length)
+        # [EasyOPD:VAL_LEN] End
 
         if max_num_batched_tokens < max_model_len and self.config.enable_chunked_prefill:
             raise ValueError(
@@ -320,6 +326,13 @@ class vLLMRollout(BaseRollout):
                 "n": 1,  # if validate, already repeat in ray_trainer
             }
 
+        # [EasyOPD:VAL_LEN] validation uses its own max_tokens and pads to it.
+        pad_length = self.config.response_length
+        if is_validate:
+            kwargs["max_tokens"] = self.val_response_length
+            pad_length = self.val_response_length
+        # [EasyOPD:VAL_LEN] End
+
         lora_requests = None
         if self.lora_kwargs:
             lora_int_ids = list(self.inference_engine.llm_engine.list_loras())
@@ -353,13 +366,13 @@ class vLLMRollout(BaseRollout):
                             curr_log_prob.append(logprob[response_ids[i]].logprob)
                         rollout_log_probs.append(curr_log_prob)
 
-            response = pad_2d_list_to_length(response, self.pad_token_id, max_length=self.config.response_length).to(
-                idx.device
-            )
+            # [EasyOPD:VAL_LEN] pad to pad_length (== response_length unless validating)
+            response = pad_2d_list_to_length(response, self.pad_token_id, max_length=pad_length).to(idx.device)
             if self.config.calculate_log_probs:
-                rollout_log_probs = pad_2d_list_to_length(
-                    rollout_log_probs, -1, max_length=self.config.response_length
-                ).to(idx.device)
+                rollout_log_probs = pad_2d_list_to_length(rollout_log_probs, -1, max_length=pad_length).to(
+                    idx.device
+                )
+                # [EasyOPD:VAL_LEN] End
                 rollout_log_probs = rollout_log_probs.to(torch.float32)
 
             seq = torch.cat([idx, response], dim=-1)

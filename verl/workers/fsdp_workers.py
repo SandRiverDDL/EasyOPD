@@ -867,8 +867,15 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         with self.ulysses_sharding_manager:
             with adapter_ctx:
                 output, entropys = self.actor.compute_log_prob(data=data, calculate_entropy=True)
+            _opd_tensors = {"old_log_probs": output, "entropys": entropys}
+            # [EasyOPD:OPD] forward old-policy top-k when the trainer asked for it (vOPD / IER)
+            _topk_k = data.meta_info.get("opsa_topk_k", None)
+            if _topk_k is not None and _topk_k > 0 and getattr(self.actor, "_last_opsa_topk_indices", None) is not None:
+                _opd_tensors["old_topk_log_probs"] = self.actor._last_opsa_topk_log_probs
+                _opd_tensors["old_topk_indices"] = self.actor._last_opsa_topk_indices
+            # [EasyOPD:OPD] End
             output = DataProto.from_dict(
-                tensors={"old_log_probs": output, "entropys": entropys},
+                tensors=_opd_tensors,
                 meta_info={"temperature": self.config.rollout.temperature},
             )
 
@@ -911,10 +918,20 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # original OPSA distillation_safety.yaml (loss_fn.kl_type="mixed", topk_logits_k=512).
         opsa_topk_k = data.meta_info.get("opsa_topk_k", None)
         # ============ [EasyOPD:OPSA] End ============
+        # [EasyOPD:OPD] optional teacher entropy / teacher log-probs at student top-k ids
+        opd_ref_entropy = bool(data.meta_info.get("opd_ref_entropy", False))
+        opd_gather_key = data.meta_info.get("opd_gather_key", None)
+        # [EasyOPD:OPD] End
         with self.ulysses_sharding_manager:
             data = data.to("cpu")  # data will to device with each micro batch on ref.compute_log_prob
-            output, _ = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
+            output, _ref_entropy = self.ref_policy.compute_log_prob(data=data, calculate_entropy=opd_ref_entropy)
             output_tensors = {"ref_log_prob": output}
+            # [EasyOPD:OPD]
+            if opd_ref_entropy:
+                output_tensors["ref_entropy"] = _ref_entropy
+            if opd_gather_key is not None:
+                output_tensors["ref_gathered_log_probs"] = self.ref_policy._last_opd_gathered
+            # [EasyOPD:OPD] End
             # ============ [EasyOPD:OPSA] forward top-K outputs to the trainer ============
             if opsa_topk_k is not None and opsa_topk_k > 0:
                 topk_values = getattr(self.ref_policy, "_last_opsa_topk_log_probs", None)
@@ -938,7 +955,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None):
+    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None, save_contents=None):
         from verl.utils.logger import log_with_rank
 
         # only support save and load ckpt for actor
@@ -947,9 +964,17 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
 
-        self.checkpoint_manager.save_checkpoint(
-            local_path=local_path, hdfs_path=hdfs_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep
-        )
+        # [EasyOPD:CKPT] per-call override of actor.checkpoint.save_contents (weights-only saves pass ["model"])
+        default_save_contents = self.checkpoint_manager.checkpoint_save_contents
+        if save_contents is not None:
+            self.checkpoint_manager.checkpoint_save_contents = list(save_contents)
+        try:
+            self.checkpoint_manager.save_checkpoint(
+                local_path=local_path, hdfs_path=hdfs_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep
+            )
+        finally:
+            self.checkpoint_manager.checkpoint_save_contents = default_save_contents
+        # [EasyOPD:CKPT] End
         dist.barrier()
 
         if self._is_lora and hasattr(getattr(self, "actor_module", self.actor_module_fsdp), "peft_config"):

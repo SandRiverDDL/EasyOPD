@@ -88,6 +88,11 @@ kl_loss_coef: 0.001
 # Type of KL divergence loss. Options: "kl"(k1), "abs", "mse"(k2), "low_var_kl"(k3), "full"
 kl_loss_type: low_var_kl
 
+# [EasyOPD:OPD] unified same-tokenizer OPD method (easyopd/opd). Empty = disabled.
+# Set e.g. `+actor_rollout_ref.actor.opd.method=topd +actor_rollout_ref.actor.opd.alpha=0.5`.
+opd: {}
+# [EasyOPD:OPD] End
+
 # Number of PPO epochs per batch
 ppo_epochs: 1
 
